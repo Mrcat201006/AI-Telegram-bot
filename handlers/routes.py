@@ -54,7 +54,7 @@ async def evaluate_importance(text: str) -> int:
     """
     try:
         response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile", 
+            model="openai/gpt-oss-20b", 
             messages=[{"role": "system", "content": system_instruction},
                 {"role": "user", "content": f'Текст пользователя: "{text}"'}],
             max_tokens=20,
