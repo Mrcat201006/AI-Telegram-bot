@@ -29,15 +29,24 @@ user_last_active = {}
 router = Router()
 
 
-def get_main_reply_keybord():
-    keybord = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="бот туралы")],
-            [KeyboardButton(text="көмек")] 
-        ],
-        resize_keyboard=True
-    )
-    return keybord
+async def send_human_like_response(bot: Bot, chat_id: int, full_text: str):
+    """
+    Режет текст по знаку '|', имитирует печать и отправляет частями.
+    """
+    messages_to_send = [msg.strip() for msg in full_text.split('|') if msg.strip()]
+    
+    for text in messages_to_send:
+        # Показываем статус "печатает..."
+        await bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        # Считаем задержку: 0.05 сек на один символ (но не меньше 1 секунды)
+        typing_delay = max(1, len(text) * 0.05)
+        await asyncio.sleep(typing_delay)
+        
+        # Отправляем кусок текста
+        await bot.send_message(chat_id=chat_id, text=text)
+
+
 
 
 # === НОВАЯ ФУНКЦИЯ ДЛЯ ОЦЕНКИ ВАЖНОСТИ ===
@@ -84,24 +93,10 @@ async def evaluate_importance(text: str) -> int:
 async def start(message: Message):
     await message.answer("ai ботына қош келдіңіз!")
         
-
-@router.message(Command('help'))
-@router.message(F.text.lower() == "көмек")
-async def help(message: Message):
-    await message.answer(
-        "Командалар:\n /help - команда тізімі\n /about - бот сипаттамасы\n",
-        reply_markup=get_main_reply_keybord()
-    )
-    
-    
-@router.message(Command("about"))
-@router.message(F.text.lower() == "бот туралы")
-async def about(message: Message):
-    await message.answer("Бұл бот регестрация командасын қолданылуын көрсету үшін арналған")
-    
-
+        
+        
 @router.message()
-async def generete_response(message: Message):
+async def generete_response(message: Message, bot: Bot):
     user_id = message.from_user.id
     user_text = message.text
     current_time = datetime.now()
@@ -170,6 +165,11 @@ async def generete_response(message: Message):
     
     chat_history[user_id].append({"role": "assistant", "content": bot_reply})
     
-    await message.answer(bot_reply)
+    # Отправляем ответ пользователю, имитируя печать
+    await send_human_like_response(
+        bot=bot, 
+        chat_id=message.chat.id, 
+        full_text=bot_reply
+    )
 
     
