@@ -1,4 +1,5 @@
 import asyncio
+import random
 from os import getenv
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
@@ -29,6 +30,48 @@ user_last_active = {}
 router = Router()
 
 
+# =====================================================================
+# Вспомогательные функции для очеловечивания (Опечатки и деление строк)
+# =====================================================================
+
+def introduce_typos(text: str, error_rate: float = 0.03) -> str:
+    """
+    Добавляет случайные человеческие опечатки в текст.
+    error_rate = 0.03 означает 3% шанс опечатки в каждом слове.
+    """
+    if error_rate <= 0:
+        return text
+
+    words = text.split(' ')
+    processed_words = []
+
+    for word in words:
+        # Делаем ошибку только в словах длиннее 3 букв
+        if len(word) > 3 and random.random() < error_rate:
+            word_list = list(word)
+            typo_type = random.choice(['swap', 'skip', 'double'])
+            idx = random.randint(1, len(word_list) - 2)
+
+            if typo_type == 'swap':
+                # Меняем местами соседние буквы
+                word_list[idx], word_list[idx+1] = word_list[idx+1], word_list[idx]
+            elif typo_type == 'skip':
+                # Пропускаем букву
+                word_list.pop(idx)
+            elif typo_type == 'double':
+                # Дублируем букву
+                word_list.insert(idx, word_list[idx])
+
+            word = "".join(word_list)
+        
+        processed_words.append(word)
+
+    return " ".join(processed_words)
+
+
+
+
+
 async def send_human_like_response(bot: Bot, chat_id: int, full_text: str):
     """
     Режет текст по знаку '|', имитирует печать и отправляет частями.
@@ -46,10 +89,10 @@ async def send_human_like_response(bot: Bot, chat_id: int, full_text: str):
         # Отправляем кусок текста
         await bot.send_message(chat_id=chat_id, text=text)
 
+#===============================
 
 
-
-# === НОВАЯ ФУНКЦИЯ ДЛЯ ОЦЕНКИ ВАЖНОСТИ ===
+# === ФУНКЦИЯ ДЛЯ ОЦЕНКИ ВАЖНОСТИ ===
 async def evaluate_importance(text: str) -> int:
     """
     Нейросеть решает, нужно ли сохранять сообщение в базу навсегда (от 1 до 10).
@@ -165,11 +208,14 @@ async def generete_response(message: Message, bot: Bot):
     
     chat_history[user_id].append({"role": "assistant", "content": bot_reply})
     
+    
+    human_text = introduce_typos(bot_reply, error_rate=0.03)  # x% шанс опечатки
+    
     # Отправляем ответ пользователю, имитируя печать
     await send_human_like_response(
         bot=bot, 
         chat_id=message.chat.id, 
-        full_text=bot_reply
+        full_text=human_text
     )
 
     
