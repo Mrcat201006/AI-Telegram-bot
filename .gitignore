@@ -2,3 +2,4 @@
 **/__pycache__/
 memory/diary.db
 .env
+persona.py

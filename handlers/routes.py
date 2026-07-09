@@ -1,23 +1,23 @@
 import asyncio
+import io
 import random
 from os import getenv
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import (Message , CallbackQuery, ReplyKeyboardMarkup, 
-                           KeyboardButton , InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile)
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
+from aiogram.types import Message 
 from dotenv import load_dotenv
 from datetime import datetime,timedelta
 from memory.long_term import LongTermMemory
 from persona import BOT_PROMPT
-from groq import AsyncGroq
+from google import genai
+from google.genai import types
+
+
 
 
 load_dotenv()
-api_key =getenv("API_KEY")
-
-client = AsyncGroq(api_key=api_key)
+api_key = getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key)
 
 long_memory = LongTermMemory()
 
@@ -97,40 +97,41 @@ async def evaluate_importance(text: str) -> int:
     """
     Нейросеть решает, нужно ли сохранять сообщение в базу навсегда (от 1 до 10).
     """
-    system_instruction = f"""
-    Оцени от 1 до 10, содержит ли этот текст важный факт о пользователе, 
-    который боту нужно запомнить (имя, хобби, факты, учеба, планы).
-    Обычная болтовня вроде "привет", "ок", "помоги" = 1.
-    Текст: "{text}"
-    Ответь ТОЛЬКО ОДНОЙ ЦИФРОЙ.
-    """
     try:
-        response = await client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct", 
-            messages=[{"role": "system", "content": system_instruction},
-                {"role": "user", "content": f'Текст пользователя: "{text}"'}],
-            max_tokens=20,
-            temperature=0.1
+        prompt = f"""
+        Оцени от 1 до 10, содержит ли этот текст важный факт о пользователе, 
+        который боту нужно запомнить (имя, хобби, факты, учеба, планы).
+        Обычная болтовня вроде "привет", "ок", "помоги" = 1.
+        Текст: "{text}"
+        Ответь ТОЛЬКО ОДНОЙ ЦИФРОЙ.
+        """
+        
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config={"max_output_tokens": 5,
+                    'temperature': 0.1} # 5 токенов хватит с головой для одного числа
         )
-        score_str = response.choices[0].message.content.strip()
         
-        # 1. Если ИИ вернул пустоту (твоя ошибка)
-        if not score_str:
-            print("⚠️ ИИ прислал пустой ответ. Ставим важность 1.")
-            return 1
+        answer_text = response.text.strip()
+        
+        # 2. СНАЧАЛА проверяем, состоит ли строка только из цифр
+        if answer_text.isdigit():
+            # 3. И только теперь безопасно превращаем в число
+            score = int(answer_text)
             
-        # 2. Если ИИ прислал не цифру, а текст (например, "Оценка 5" или "Ок")
-        if not score_str.isdigit():
-            print(f"⚠️ ИИ прислал текст вместо цифры: '{score_str}'. Ставим важность 1.")
+            # Небольшая защита от галлюцинаций (вдруг ИИ выдаст 100)
+            if 1 <= score <= 10:
+                return score
+            else:
+                return 1 # Если число вне диапазона, считаем неважным
+        else:
+            print(f"⚠️ Ответ не является числом: {answer_text}")
             return 1
         
-        # Если всё хорошо и там чистая цифра — превращаем в int и возвращаем
-        return int(score_str)
-    
     except Exception as e:
-        print(f"Ошибка ИИ при оценке: {e}")
-        return 1 # Если ИИ запнулся, считаем сообщение неважным
-
+        print(f"Ошибка при оценке важности: {e}")
+        return 1
 
 @router.message(Command("start"))
 async def start(message: Message):
@@ -138,11 +139,35 @@ async def start(message: Message):
         
         
         
-@router.message()
+@router.message(F.text | F.photo | F.sticker)
 async def generete_response(message: Message, bot: Bot):
     user_id = message.from_user.id
-    user_text = message.text
     current_time = datetime.now()
+    
+    user_text = ""
+    image_bytes = None 
+    
+    if message.text:
+        user_text = message.text
+
+    elif message.sticker:
+        sticker_emoji = message.sticker.emoji or "✨"
+        user_text = f"[Пользователь отправил тебе стикер: {sticker_emoji}]"
+
+    elif message.photo:
+        user_text = message.caption or "Посмотри на эту картинку."
+        
+       
+        try:
+             # Скачиваем фото в оперативную память напрямую в байты
+            photo = message.photo[-1]
+            file_io = io.BytesIO()
+            await bot.download(photo, destination=file_io)
+            image_bytes = file_io.getvalue()
+        except Exception as e:
+            print(f"Ошибка при скачивании фото: {e}")
+            await message.reply("Извини, не смогла загрузить твое фото. Попробуй еще раз.")
+            return
 
 
     #-------краткосрочная память (временная)-------
@@ -161,8 +186,6 @@ async def generete_response(message: Message, bot: Bot):
     if user_id not in chat_history:
         chat_history[user_id] = []
         
-    # Добавляем сообщение пользователя в историю
-    chat_history[user_id].append({"role": "user", "content": user_text})
     
     # Ограничиваем длину истории
     if len(chat_history[user_id]) > 20:
@@ -190,25 +213,64 @@ async def generete_response(message: Message, bot: Bot):
     #-----Ответ бота с учетом краткосрочной и долгосрочной памяти-----
        
     # Склеиваем характер бота (из файла persona.py) и воспоминания
-    system_prompt = f"{BOT_PROMPT}\n\nВот важные воспоминания об этом пользователе:\n{long_context}"
+    system_prompt = f"{BOT_PROMPT}\n\nВот важные воспоминания об этом пользователе:\n{long_context}"     
         
-    messages = [
-        {"role": "system", "content": system_prompt},
-    ] + chat_history[user_id]    
-        
-        
-    response =  await client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=messages,
-        max_tokens=1000,
-        temperature=0.7
+    payload_contents = list(chat_history[user_id])
+    
+    # Добавляем СВЕЖЕЕ сообщение в этот пакет
+    if image_bytes:
+        payload_contents.append(types.Content(
+        role='user',
+        parts=[types.Part.from_text(text=user_text), types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")]
         )
+            
+        )
+    else:
+        payload_contents.append(types.Content(
+        role='user',
+        parts=[types.Part.from_text(text=user_text)]
+        )
+        )
+    try:
+        # Уведомляем пользователя, что бот "печатает/думает", пока идет долгий запрос к ИИ
+        await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+        
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=payload_contents,
+            config={
+                "max_output_tokens": 1000,
+                "temperature": 0.7,
+                "system_instruction": system_prompt
+            }
+        )
+        bot_reply = response.text
+        
+    except Exception as e:
+        print(f"🛑 Критическая ошибка Gemini API: {e}")
+        await message.reply("Ой, я немного зависла... Напиши еще раз чуть позже! 💔")
+        return # Прерываем функцию, чтобы не сохранить пустой ответ в историю
     
-    bot_reply = response.choices[0].message.content
     
-    chat_history[user_id].append({"role": "assistant", "content": bot_reply})
+    # Добавляем собшение пользователя в краткосрочную память (историю)
+    if message.photo:
+        chat_history[user_id].append(types.Content(
+        role="user",
+        parts=[types.Part.from_text(text=f"[Пользователь прислал фото с описанием: {user_text}]")]
+    ))
+    else:
+        chat_history[user_id].append(types.Content(
+        role="user",
+        parts=[types.Part.from_text(text=user_text)]
+    ))
+        
+    # Сохраняем ответ в историю
+    chat_history[user_id].append(types.Content(
+        role="model",
+        parts=[types.Part.from_text(text=bot_reply)]
+    ))
     
-    
+    # Очеловечивание 
     human_text = introduce_typos(bot_reply, error_rate=0.03)  # x% шанс опечатки
     
     # Отправляем ответ пользователю, имитируя печать
