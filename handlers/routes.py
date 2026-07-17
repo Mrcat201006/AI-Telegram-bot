@@ -5,7 +5,7 @@ import random
 from os import getenv
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import Message 
+from aiogram.types import  Message 
 from dotenv import load_dotenv
 from datetime import datetime,timedelta
 from memory.long_term import LongTermMemory
@@ -28,7 +28,6 @@ chat_history = {}
 user_last_active = {}
 
 router = Router()
-
 
 # =====================================================================
 # Вспомогательные функции для очеловечивания (Опечатки и деление строк)
@@ -157,6 +156,7 @@ async def generete_response(message: Message, bot: Bot):
     
     elif message.video or message.audio or message.document:
         await message.reply("Извини, я пока не умею обрабатывать видео, аудио и документы. Попробуй отправить текст или фото.")
+        return
         
     elif message.photo:
         user_text = message.caption or "Посмотри на эту картинку."
@@ -269,8 +269,9 @@ async def generete_response(message: Message, bot: Bot):
     
     # Очеловечивание 
     human_text = introduce_typos(bot_reply, error_rate=0.03)  # x% шанс опечатки
+
     
-    # Отправляем ответ пользователю, имитируя печать
+        # Отправляем ответ пользователю, имитируя печать
     await send_human_like_response(
         bot=bot, 
         chat_id=message.chat.id, 
