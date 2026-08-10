@@ -1,15 +1,15 @@
 import asyncio
-from io import BytesIO
 from os import getenv
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import  Message , Voice
+from aiogram.types import  Message , ChatMemberUpdated
 from dotenv import load_dotenv
 from datetime import datetime,timedelta
 from memory.long_term import LongTermMemory
 from persona import BOT_PROMPT
 from groq import AsyncGroq
 from handlers.function import parse_user_content, evaluate_importance, introduce_typos, send_human_like_response
+from aiogram.enums import ChatType
 
 
 
@@ -27,10 +27,31 @@ user_last_active = {}
 
 router = Router()
 
+@router.my_chat_member()
+async def bot_added(event: ChatMemberUpdated, bot: Bot):
+    # Проверяем, что это группа или супергруппа
+    if event.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return
+
+    # Бота только что добавили
+    if (
+        event.new_chat_member.status in ("member", "administrator")
+        and event.old_chat_member.status == "left"
+    ):
+        await bot.send_message(
+            event.chat.id,
+            "👋 Спасибо за приглашение!\n"
+            "Этот бот работает только в личных сообщениях.\n"
+            "Напишите мне: @ВашБот"
+        )
+
+        await bot.leave_chat(event.chat.id)
+
 
 @router.message(Command("start"))
 async def start(message: Message):
     await message.answer("ai ботына қош келдіңіз!")
+        
         
         
         
