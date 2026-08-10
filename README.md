@@ -20,14 +20,15 @@ The character's identity, mood, guidelines, and behavioral traits are defined in
 * **Token Optimization:** Cleans up or structures conversation history so the context window remains lightweight without losing critical details.
 ---
 
-##🚀 Quick Start & Deployment
-###Prerequisites
+## 🚀 Quick Start & Deployment
+
+### Prerequisites
 ```bash
 Python 3.10+
 Telegram Bot Token (Obtained from [@BotFather](https://t.me/BotFather))
 AI API Key (OpenAI, Groq, or custom LLM endpoint)
 ```
-##Setup Steps
+## Setup Steps
 1. Clone the Repository
 git clone https://github.com/Mrcat201006/AI-Telegram-bot.git cd AI-Telegram-bot
 2. Create Virtual Environment
@@ -58,10 +59,12 @@ Create persona.py (or persons.py) in the project root to set up your character's
   If your script imports from persons.py instead of persona.py, make sure the filename matches the import statement inside handlers/function.py or main.py:
   from persona import SYSTEM_PROMPT  # or: from persons import SYSTEM_PROMPT
 
-##🛠️ Execution
+## 🛠️ Execution
 Start the bot:
   python main.py
 
+## Community
+- **Telegram**: https://t.me/mrcat201006me
 
 ## 📁 Project Structure
 ```text
