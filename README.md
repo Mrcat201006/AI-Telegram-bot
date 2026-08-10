@@ -22,10 +22,11 @@ The character's identity, mood, guidelines, and behavioral traits are defined in
 
 ##🚀 Quick Start & Deployment
 ###Prerequisites
+```bash
 Python 3.10+
 Telegram Bot Token (Obtained from [@BotFather](https://t.me/BotFather))
 AI API Key (OpenAI, Groq, or custom LLM endpoint)
-
+```
 ##Setup Steps
 1. Clone the Repository
 git clone https://github.com/Mrcat201006/AI-Telegram-bot.git cd AI-Telegram-bot
