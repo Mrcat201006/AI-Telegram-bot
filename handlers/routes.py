@@ -8,6 +8,7 @@ from datetime import datetime,timedelta
 from memory.long_term import LongTermMemory
 from persona import BOT_PROMPT
 from groq import AsyncGroq
+from handlers.state import chat_history, user_last_active
 from handlers.function import parse_user_content, evaluate_importance, introduce_typos, send_human_like_response
 from aiogram.enums import ChatType
 
@@ -19,13 +20,8 @@ client = AsyncGroq(api_key=api_key)
 
 long_memory = LongTermMemory()
 
-#Краткосрочная память: user_id -> список сообщений
-chat_history = {}
-
-#Мы храним время активности для КАЖДОГО пользователя отдельно
-user_last_active = {}
-
 router = Router()
+
 
 @router.my_chat_member()
 async def bot_added(event: ChatMemberUpdated, bot: Bot):
@@ -74,8 +70,8 @@ async def generete_response(message: Message, bot: Bot):
     # Очистка по времени
     # Проверяем, общался ли человек с нами раньше
     if user_id in user_last_active:
-        # Если он молчал дольше 2 часов, забываем контекст ЕГО диалога
-        if current_time - user_last_active[user_id] > timedelta(hours=2):
+        # Если он молчал дольше 4 часов, забываем контекст ЕГО диалога
+        if current_time - user_last_active[user_id] > timedelta(hours=4):
             chat_history[user_id] = []
             print(f"🧹 История пользователя {user_id} забыта из-за долгого молчания.")
             
@@ -141,10 +137,12 @@ async def generete_response(message: Message, bot: Bot):
     else:
         messages.append({"role": "user", "content": user_text})
     
+    #------Отправка запроса к модели Qwen 3.6-27B и обработка ответа-----
     try:
         # Уведомляем пользователя, что бот "печатает/думает", пока идет долгий запрос к ИИ
         await bot.send_chat_action(chat_id=message.chat.id, action="typing")
         
+        # Отправляем запрос к модели Qwen 3.6-27B
         response = await client.chat.completions.create(
             model='qwen/qwen3.6-27b',
             messages=messages,
@@ -153,12 +151,14 @@ async def generete_response(message: Message, bot: Bot):
             reasoning_format="hidden"
         )
         bot_reply = response.choices[0].message.content
-        
+    
+    # Обработка ошибок при запросе к модели    
     except Exception as e:
         print(f"🛑 Критическая ошибка API: {e}")
         await message.reply("Ой, я немного зависла... Напиши еще раз чуть позже! 💔")
         return # Прерываем функцию, чтобы не сохранить пустой ответ в историю
     
+    # Проверяем, что ответ не пустой
     if not bot_reply or not bot_reply.strip():
             bot_reply = "Упс... Я слишком глубоко ушла в свои мысли и забыла, что хотела сказать! Попробуй спросить иначе. 😅"
     

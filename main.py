@@ -5,6 +5,8 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 from handlers.routes import router
 from memory.long_term import LongTermMemory
+from handlers.state import user_last_active
+from handlers.function import random_scheduler
 
 load_dotenv()
 Token = getenv("bot_token")
@@ -20,6 +22,8 @@ async def main():
     await memory.init_db() 
        
     print("start..")
+    asyncio.create_task(random_scheduler(bot,user_last_active))
+    
     
     await dp.start_polling(bot)
     
